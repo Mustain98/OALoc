@@ -1,0 +1,38 @@
+# Single source of runtime settings (00_PROJECT_GUIDE.md §5).
+# Nothing here is code — tune the experiment by editing this file.
+
+# --- LLM backend -------------------------------------------------------------
+# provider: ollama | fake | anthropic
+#   ollama    — free, runs locally, no API key. usd is genuinely 0.0.
+#   fake      — deterministic canned responses; used by the test suite.
+#   anthropic — hosted, billed per token. Needs ANTHROPIC_API_KEY in .env.
+provider: "ollama"
+model: "qwen2.5-coder:7b"
+
+ollama:
+  host: "http://localhost:11434"
+  # IMPORTANT: Ollama defaults num_ctx to ~4096 and truncates the prompt SILENTLY.
+  # The repo-structure tree is the bulk of our prompt, so at the default a hops=3
+  # tree gets cut down to the same size as a hops=1 tree — the effort knob stops
+  # doing anything and the experiment measures nothing. Keep this explicit.
+  num_ctx: 16384
+  timeout: 600          # seconds; a local 7B on CPU/GPU can be slow on long prompts
+
+# --- Dataset -----------------------------------------------------------------
+dataset: "princeton-nlp/SWE-bench_Lite"
+split: "test"
+limit: 30                          # start small; raise to 300 for the full run
+
+# --- Effort budgets (ROLE 1's policy reads these) ----------------------------
+# Low-quality report => more effort; high-quality => less.
+budgets:
+  low:    { max_candidates: 50, max_hops: 3, max_samples: 3 }   # for low-quality reports
+  medium: { max_candidates: 25, max_hops: 2, max_samples: 2 }
+  high:   { max_candidates: 10, max_hops: 1, max_samples: 1 }   # for clear reports
+
+# Baseline control: the SAME budget for every report, whatever its quality.
+baseline_budget: { max_candidates: 15, max_hops: 2, max_samples: 1 }
+
+paths:
+  data: "./data"
+  outputs: "./outputs"
