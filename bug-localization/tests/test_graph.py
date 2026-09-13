@@ -187,6 +187,68 @@ def test_index_is_cached_not_rebuilt(cg):
     assert cg._search_index is not None
 
 
+# --- hierarchical index tiers (LocAgent paper §3.1) ------------------------- #
+
+def test_exact_id_match_short_circuits(cg):
+    hits = search_entity(cg, "src/cache.py:Cache.get")
+    assert [h["id"] for h in hits] == ["src/cache.py:Cache.get"]
+    assert hits[0]["match"] == "exact_id"
+
+
+def test_exact_name_match_returns_every_sharer(tmp_path):
+    """Two files define a function of the same bare name — searching the bare name
+    must return both, not just whichever the fuzzy index happens to rank first."""
+    (tmp_path / "a.py").write_text("def run():\n    pass\n")
+    (tmp_path / "b.py").write_text("def run():\n    pass\n")
+    g = build_graph(str(tmp_path))
+
+    hits = search_entity(g, "run")
+
+    assert {h["id"] for h in hits} == {"a.py:run", "b.py:run"}
+    assert all(h["match"] == "exact_name" for h in hits)
+
+
+def test_bm25_content_tier_finds_a_keyword_absent_from_every_id(cg):
+    """'KeyError' never appears in any entity id/qualname/name in the fixture (it's
+    only in a comment inside Cache.get's body) — only the content tier can find it."""
+    hits = search_entity(cg, "KeyError")
+    assert hits, "content tier should match on the word used in the comment/body"
+    assert all(h["match"] == "bm25_content" for h in hits)
+    assert any(h["id"] == "src/cache.py:Cache.get" for h in hits)
+
+
+def test_bm25_id_tier_still_wins_over_content_when_it_matches(cg):
+    """A fuzzy but id-matching keyword (no single id/name equals it exactly) must not
+    fall through to the content tier."""
+    hits = search_entity(cg, "cache get")
+    assert hits and hits[0]["match"] == "bm25_id"
+    assert hits[0]["id"] == "src/cache.py:Cache.get"
+
+
+# --- traverse_graph direction (LocAgent paper Table 2 / Figure 7) ----------- #
+
+def test_traverse_direction_defaults_to_out_unchanged(cg):
+    """No direction arg -> byte-identical to the pre-direction behavior."""
+    out = traverse_graph(cg, ["src/cache.py:helper"], hops=1)
+    assert out == traverse_graph(cg, ["src/cache.py:helper"], hops=1, direction="out")
+
+
+def test_traverse_direction_in_finds_callers(cg):
+    """helper() calls Cache.get(); traversing 'in' from Cache.get must surface helper."""
+    out = traverse_graph(cg, ["src/cache.py:Cache.get"], hops=1, direction="in")
+    assert "src/cache.py:helper [function] <-invoke-by" in out
+
+
+def test_traverse_direction_out_does_not_show_callers(cg):
+    out = traverse_graph(cg, ["src/cache.py:Cache.get"], hops=1, direction="out")
+    assert "helper" not in out
+
+
+def test_traverse_direction_both_shows_callees_and_callers(cg):
+    out = traverse_graph(cg, ["src/cache.py:Cache.get"], hops=1, direction="both")
+    assert "<-invoke-by" in out
+
+
 # --- traverse_graph -------------------------------------------------------- #
 
 def test_traverse_renders_an_indented_tree(cg):

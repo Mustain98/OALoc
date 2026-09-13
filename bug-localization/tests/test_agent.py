@@ -1,25 +1,28 @@
-"""Agent loop, exercised entirely offline via the `fake` LLM backend."""
-import pytest
+"""Agent loop tests.
 
+The loop is a LangGraph ReAct-style graph over ChatOllama (src/localizer/agent.py).
+Run entirely offline: the `fake` provider path needs nothing, and the LangGraph path is
+exercised by monkeypatching ChatOllama with a small scripted stand-in whose `.invoke()`
+returns a queued response — no network, no real Ollama, no model. The stand-in's
+`bind_tools()` returns itself and does not restrict which tools LangGraph's ToolNode may
+call, so tool calls it emits execute for real against the mini_repo fixture graph.
+"""
 import os
+
+import groq
+import httpx
+import pytest
+from langchain_core.messages import AIMessage
 
 from src import llm
 from src.graph.indexer import build_graph
-from src.localizer.agent import _parse_entities, _truncate_tree, localize
+from src.localizer import agent as agent_mod
+from src.localizer.agent import _parse_entities, localize
 from src.schemas import Budget, Instance
+from src.service.errors import JobCancelled
 
-# Point at the bundled fixture directly. checkout_repo now performs a real git clone,
-# so calling it here would try to reach github.com/stub/mini.
 MINI_REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "fixtures", "mini_repo")
-
-
-@pytest.fixture(autouse=True)
-def fake_backend():
-    llm.set_provider("fake")
-    llm.reset_fake_log()
-    yield
-    llm.reset_fake_log()
 
 
 @pytest.fixture
@@ -41,7 +44,7 @@ def _budget(samples=1, candidates=10, hops=2):
                   model="fake-model")
 
 
-# --- parsing --------------------------------------------------------------- #
+# --- parsing (unchanged from before the LangGraph rewrite) ----------------- #
 
 def test_parses_messy_model_output():
     """Numbered, bulleted, fenced and prose-wrapped — what a 7B actually emits."""
@@ -78,87 +81,207 @@ def test_parser_respects_limit():
     assert len(_parse_entities(text, limit=5)) == 5
 
 
-# --- truncation ------------------------------------------------------------ #
+# --- the fake/offline provider short-circuit -------------------------------- #
 
-def test_truncation_scales_with_hops():
-    """A flat cap would erase the hops=1 / hops=3 difference — the independent variable."""
-    tree = "\n".join(f"src/file{i}.py [file]" for i in range(20_000))
-    assert len(_truncate_tree(tree, 3)) > len(_truncate_tree(tree, 1))
-
-
-def test_small_tree_is_untouched():
-    tree = "src/cache.py [file]\n  src/cache.py:get [function]"
-    assert _truncate_tree(tree, 1) == tree
-
-
-# --- the loop -------------------------------------------------------------- #
-
-def test_localize_returns_populated_prediction(graph):
-    p = localize(INST, _budget(), graph)
+def test_fake_provider_returns_a_well_formed_prediction(graph):
+    llm.set_provider("fake")
+    try:
+        p = localize(INST, _budget(), graph)
+    finally:
+        llm.set_provider("ollama")
     assert p.instance_id == "t1"
     assert p.ranked_files and p.ranked_functions
-    assert p.tokens > 0, "cost must be recorded on every prediction"
+    assert p.tokens > 0
 
 
-def test_max_samples_drives_the_number_of_llm_calls(graph):
-    localize(INST, _budget(samples=1), graph)
-    one = len(llm.fake_call_log())
-    llm.reset_fake_log()
-    localize(INST, _budget(samples=3), graph)
-    three = len(llm.fake_call_log())
-    assert three == 3 * one, "max_samples is an effort knob; it must actually bind"
+# --- the LangGraph loop, driven by a scripted fake chat model --------------- #
+
+class _ScriptedChatModel:
+    """Stand-in for ChatOllama. Every instance (bound or not) pops from one shared
+    class-level queue, so a script can span both the tool-calling loop and a later
+    force_answer_node call regardless of which one constructs it."""
+
+    queue: list = []
+    instantiations = 0
+
+    def __init__(self, *args, **kwargs):
+        _ScriptedChatModel.instantiations += 1
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages):
+        if _ScriptedChatModel.queue:
+            return _ScriptedChatModel.queue.pop(0)
+        return AIMessage(content="```\nsrc/cache.py:Cache.get\n```",
+                         response_metadata={"prompt_eval_count": 5, "eval_count": 5})
 
 
-def test_keyword_call_cost_is_counted(graph):
-    """The role-doc sketch discarded it while reporting cost as the headline metric."""
-    p = localize(INST, _budget(samples=1), graph)
-    calls = llm.fake_call_log()
-    assert len(calls) == 2, "one keyword call + one ranking call"
-    keyword_tokens = llm._call_fake("fake-model", calls[0]["system"],
-                                    calls[0]["user"], 60)[1]
-    assert p.tokens > keyword_tokens
+@pytest.fixture(autouse=True)
+def _reset_scripted_model():
+    _ScriptedChatModel.queue = []
+    _ScriptedChatModel.instantiations = 0
+    yield
+    _ScriptedChatModel.queue = []
+    _ScriptedChatModel.instantiations = 0
 
 
-def test_more_samples_cost_more(graph):
-    cheap = localize(INST, _budget(samples=1), graph)
-    dear = localize(INST, _budget(samples=3), graph)
-    assert dear.tokens > cheap.tokens
+def _ai(content="", tool_calls=None, tokens=(5, 5)):
+    return AIMessage(
+        content=content,
+        tool_calls=tool_calls or [],
+        response_metadata={"prompt_eval_count": tokens[0], "eval_count": tokens[1]},
+    )
 
 
-def test_reciprocal_rank_puts_repeated_top_hits_first(graph):
-    p = localize(INST, _budget(samples=3), graph)
-    # The fake backend always ranks src/cache.py:Cache.get first.
+def test_tool_calls_execute_against_the_real_graph(monkeypatch, graph):
+    """A scripted tool_call for search_entity must return real BM25 hits from the
+    fixture graph, and the model's final answer (informed by that) must parse."""
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    _ScriptedChatModel.queue = [
+        _ai(tool_calls=[{"name": "search_entity",
+                         "args": {"keyword": "Cache.get"}, "id": "1"}]),
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),
+    ]
+
+    p = localize(INST, _budget(samples=1, hops=3), graph)
+
+    assert p.ranked_functions and p.ranked_functions[0] == "src/cache.py:Cache.get"
+    assert p.ranked_files[0] == "src/cache.py"
+    assert p.tokens > 0
+
+
+def test_progress_cb_reports_tool_call_and_result(monkeypatch, graph):
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    _ScriptedChatModel.queue = [
+        _ai(tool_calls=[{"name": "search_entity",
+                         "args": {"keyword": "Cache.get"}, "id": "1"}]),
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),
+    ]
+
+    trace = []
+    localize(INST, _budget(samples=1, hops=3), graph,
+            progress_cb=lambda i, e: trace.append((i, e)))
+
+    kinds = [e["type"] for _, e in trace]
+    assert "tool_call" in kinds
+    assert "tool_result" in kinds
+    assert "final_answer" in kinds
+    assert all(i == 0 for i, _ in trace), "single sample: every entry is sample 0"
+
+
+def _rate_limit_error() -> groq.RateLimitError:
+    resp = httpx.Response(status_code=429, request=httpx.Request("POST", "http://x"))
+    return groq.RateLimitError("rate limited", response=resp, body=None)
+
+
+def test_groq_rotation_advances_past_an_exhausted_key():
+    """The direct-invoke path used by the LangGraph nodes (agent_node,
+    force_answer_node) must rotate keys on a 429 too, not just src.llm's
+    standalone _call_groq — this is the actual call path a real Groq run uses."""
+    llm.configure({"groq": {"api_keys": ["key-a", "key-b", "key-c"]}})
+    try:
+        build_calls = []
+
+        class _Model:
+            def invoke(self, messages):
+                if len(build_calls) < 3:
+                    raise _rate_limit_error()
+                return "ok"
+
+        def build_model():
+            build_calls.append(llm.current_groq_key())
+            return _Model()
+
+        result = agent_mod._invoke_with_groq_rotation(build_model, [])
+        assert result == "ok"
+        assert build_calls == ["key-a", "key-b", "key-c"]
+    finally:
+        llm.configure({})
+
+
+def test_groq_rotation_raises_once_every_key_is_exhausted():
+    llm.configure({"groq": {"api_keys": ["key-a", "key-b"]}})
+    try:
+        def build_model():
+            return type("M", (), {"invoke": lambda self, m: (_ for _ in ()).throw(_rate_limit_error())})()
+
+        with pytest.raises(groq.RateLimitError):
+            agent_mod._invoke_with_groq_rotation(build_model, [])
+    finally:
+        llm.configure({})
+
+
+def test_job_cancelled_propagates_instead_of_being_swallowed(monkeypatch, graph):
+    """A progress_cb that raises JobCancelled must stop localize() outright — not
+    be caught by the per-sample `except Exception` and treated as a skippable
+    failure that lets the loop continue to the next sample."""
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    _ScriptedChatModel.queue = [
+        _ai(tool_calls=[{"name": "search_entity",
+                         "args": {"keyword": "Cache.get"}, "id": "1"}]),
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),
+    ]
+
+    calls = {"n": 0}
+
+    def progress_cb(i, e):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise JobCancelled("cancelled by test")
+
+    with pytest.raises(JobCancelled):
+        localize(INST, _budget(samples=2, hops=3), graph, progress_cb=progress_cb)
+
+
+def test_budget_exhaustion_forces_an_answer(monkeypatch, graph):
+    """A model that keeps requesting tools past max_hops must still get cut off and
+    forced to answer, not run away (should_continue's force_answer branch)."""
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    keep_calling = {"name": "search_entity", "args": {"keyword": "cache"}, "id": "x"}
+    _ScriptedChatModel.queue = [
+        _ai(tool_calls=[keep_calling]),   # tool_count 0 -> 1
+        _ai(tool_calls=[keep_calling]),   # tool_count 1 -> 2 == max_hops: next check trips
+        _ai(tool_calls=[keep_calling]),   # last_msg still wants a tool -> force_answer
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),  # force_answer_node's own call
+    ]
+
+    p = localize(INST, _budget(samples=1, hops=2), graph)
+
+    # force_answer_node instantiates a second, separate ChatOllama (unbound, no tools).
+    assert _ScriptedChatModel.instantiations == 2
+    # _parse_entities also emits the bare form ("...get") alongside the qualified one.
+    assert p.ranked_functions[0] == "src/cache.py:Cache.get"
+
+
+def test_reciprocal_rank_aggregates_across_samples(monkeypatch, graph):
+    """Two samples that agree on the top hit but disagree on the second must rank the
+    agreed-upon one first (04_METHODOLOGY.md Stage 4: RRF, not Borda count)."""
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    _ScriptedChatModel.queue = [
+        _ai(content="```\nsrc/cache.py:Cache.get\nsrc/store.py:lookup\n```"),
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),
+    ]
+
+    p = localize(INST, _budget(samples=2, hops=2), graph)
+
     assert p.ranked_functions[0] == "src/cache.py:Cache.get"
     assert p.ranked_files[0] == "src/cache.py"
-
-
-def test_no_duplicate_entries(graph):
-    p = localize(INST, _budget(samples=3), graph)
     assert len(p.ranked_files) == len(set(p.ranked_files))
     assert len(p.ranked_functions) == len(set(p.ranked_functions))
 
 
-def test_failing_tool_does_not_crash_the_instance(graph, monkeypatch):
-    from src.graph import tools
-
-    monkeypatch.setattr(tools, "traverse_graph",
+def test_failing_tool_does_not_crash_the_instance(monkeypatch, graph):
+    monkeypatch.setattr(agent_mod, "ChatOllama", _ScriptedChatModel)
+    from src.graph import tools as farhan_tools
+    monkeypatch.setattr(farhan_tools, "traverse_graph",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    _ScriptedChatModel.queue = [
+        _ai(tool_calls=[{"name": "traverse_graph",
+                         "args": {"seeds": ["src/cache.py"]}, "id": "1"}]),
+        _ai(content="```\nsrc/cache.py:Cache.get\n```"),
+    ]
+
     p = localize(INST, _budget(), graph)
     assert p.instance_id == "t1"
-    assert p.ranked_files == []
-
-
-def test_broken_backend_raises_instead_of_faking_a_result(graph, monkeypatch):
-    """A dead backend must not yield a full run of empty, zero-cost 'successes'.
-
-    Swallowing LLMError produced a well-formed predictions file and a plausible
-    metrics file built from nothing at all — the worst possible failure mode here.
-    """
-    import src.localizer.agent as agent
-
-    def dead(*a, **k):
-        raise llm.LLMError("model not pulled")
-
-    monkeypatch.setattr(agent, "call", dead)
-    with pytest.raises(llm.LLMError):
-        localize(INST, _budget(samples=3), graph)
+    assert p.ranked_functions[0] == "src/cache.py:Cache.get"

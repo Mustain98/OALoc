@@ -8,8 +8,22 @@ networkx>=3.2
 rank-bm25>=0.2
 
 # ROLE 3 — dataset + plots
-datasets>=2.19        # SWE-bench Lite loader
+pandas>=2.0           # reads the local SWE-bench Lite parquet
+pyarrow>=14           # parquet engine for pandas
 matplotlib>=3.8
+
+# Agent loop — LangGraph ReAct-style tool-calling agent over Ollama
+langchain-core>=0.3
+langgraph>=0.2
+langchain-ollama>=0.2
+
+# Web UI
+streamlit>=1.38
+streamlit-autorefresh>=1.0
+
+# Optional hosted backend: only needed if provider is switched to "groq".
+groq>=0.37
+langchain-groq>=1.1
 
 # Tests
 pytest>=8

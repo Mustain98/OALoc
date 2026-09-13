@@ -2,8 +2,24 @@
 
 > **You own the numbers.** You load the benchmark, turn raw rows into `Instance`s, extract
 > ground-truth locations from the fixing patch, and compute the metrics that decide whether
-> the project worked. Read `00_PROJECT_GUIDE.md` first. You do NOT depend on anyone —
+> the project worked. Read the root `README.md` first (Architecture section). You do NOT depend on anyone —
 > start immediately with the shared `schemas.py`.
+>
+> **Status: done.** (`README.md`'s status table used to mark this a
+> STUB; it wasn't — that line was just stale and has been corrected.) Two things differ
+> from the sketches below, neither changing the interfaces in §1/§3:
+>
+> 1. **`load_dataset` reads a local parquet file, not the HF `datasets` library.**
+>    `src/data/loader.py` loads `swe_bench_lite_test.parquet` (checked into the repo
+>    root) with `pandas`/`pyarrow` instead of calling `datasets.load_dataset(...)` —
+>    one less runtime dependency on the HF Hub being reachable. The `name`/`split`
+>    params are still accepted (kept for signature compatibility) but the parquet path
+>    is fixed; only `limit` actually changes what's returned.
+> 2. **§4's `compare`/`breakdown_by_quality`/`plot_cost_accuracy` are all implemented**,
+>    reachable via `python -m src.eval.evaluate --compare` and now also from the browser
+>    (`streamlit run app.py` → "Evaluate on dataset" → "Load existing results"), and
+>    `plot_cost_accuracy` plots `avg_tokens` on the x-axis, not `avg_usd` — see §4 below
+>    and the README's "cost axis is tokens, not dollars" note.
 
 ---
 
@@ -153,16 +169,19 @@ def breakdown_by_quality(metrics):
 def plot_cost_accuracy(baseline, adaptive, out_png):
     import matplotlib.pyplot as plt
     plt.figure()
-    plt.scatter(baseline["avg_usd"], baseline["acc@5"], label="baseline (fixed)", s=90)
-    plt.scatter(adaptive["avg_usd"], adaptive["acc@5"], label="adaptive (ours)", s=90, marker="^")
-    plt.xlabel("avg cost per instance (USD)"); plt.ylabel("Acc@5 (file level)")
-    plt.title("Accuracy vs cost"); plt.legend(); plt.grid(True, alpha=.3)
+    # As built: avg_tokens on the x-axis, not avg_usd. We run a free local model, so
+    # usd is genuinely 0.0 for every instance — that plot would be a flat line at zero.
+    # Tokens are the better axis anyway: provider-neutral and exactly measurable.
+    plt.scatter(baseline["avg_tokens"], baseline["acc@5"], label="baseline (fixed)", s=90)
+    plt.scatter(adaptive["avg_tokens"], adaptive["acc@5"], label="adaptive (ours)", s=90, marker="^")
+    plt.xlabel("average tokens per instance"); plt.ylabel("Acc@5 (file level)")
+    plt.title("Accuracy vs token cost"); plt.legend(); plt.grid(True, alpha=.3)
     plt.savefig(out_png, dpi=150, bbox_inches="tight")
 ```
 
 Wire these into a `__main__` so `python -m src.eval.evaluate --compare` reads both
 prediction files from `outputs/`, prints the table, prints the quality breakdown, and saves
-`outputs/cost_accuracy.png`.
+`outputs/cost_accuracy.png`. **Done as built** — see `src/eval/evaluate.py`.
 
 ---
 
@@ -194,7 +213,9 @@ def test_miss():
   non-empty `gold_files` derived from the patch.
 - `evaluate` matches the hand-computed numbers in `test_eval.py`.
 - `python -m src.eval.evaluate --compare` prints the baseline-vs-adaptive table, the
-  by-quality breakdown, and writes `cost_accuracy.png`.
+  by-quality breakdown, and writes `cost_accuracy.png`. (Or, from the browser:
+  `streamlit run app.py` → "Evaluate on dataset" → "Load existing results" — same
+  functions, rendered as a page instead of stdout.)
 - You can read the final plot out loud in one sentence: *"adaptive reaches the same/higher
   Acc@5 at lower average cost, and the gap is largest on low-quality reports."* That sentence
   is the result the team defends.

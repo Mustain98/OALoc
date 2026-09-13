@@ -112,6 +112,15 @@ class CodeGraph:
         """(src, dst, edge_type) triples leaving `nid`."""
         return [(a, b, d.get("type")) for a, b, d in self.g.out_edges(nid, data=True)]
 
+    def in_edges(self, nid):
+        """(nid, predecessor, edge_type) triples arriving at `nid`.
+
+        Symmetric to out_edges — lets traverse_graph walk relationships backwards
+        (e.g. "who calls this function", "who imports this file"), matching LocAgent's
+        direction-aware TraverseGraph (02_FARHAN §... / paper Table 2).
+        """
+        return [(nid, a, d.get("type")) for a, b, d in self.g.in_edges(nid, data=True)]
+
     def code_of(self, nid) -> str:
         """Source text of one entity, sliced out of its file."""
         d = self.g.nodes.get(nid)

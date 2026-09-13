@@ -2,9 +2,20 @@
 
 > **This is the novel core of the project — the part that makes it publishable.**
 > You own the report-quality scorer, the budget policy, the agent loop, and the two run
-> scripts that tie everyone's work together. Read `00_PROJECT_GUIDE.md` first.
+> scripts that tie everyone's work together. Read the root `README.md` first (Architecture
+> and Methodology sections).
 > You depend on Farhan's tools (`src/graph/tools.py`) and Fahim's loader/evaluator, so
 > stub them (see §6) until they land, then swap in the real ones.
+>
+> **Status: done — and §4's loop below has since been replaced with a LangGraph
+> ReAct agent.** `src/llm.py`, `src/quality/scorer.py`, `src/quality/policy.py`, and the
+> run scripts match §1/§2/§3/§5 below closely (see the root `README.md`'s "Where the
+> implementation deviates..." section for the small, deliberate departures — RRF not
+> Borda-count voting, robust output parsing, cost counted on the keyword call, etc.).
+> `src/llm.py` also grew an `ollama` backend as the default (free, local — see
+> `README.md`'s Methodology/Configuration sections, "the cost axis is tokens, not
+> dollars"), alongside the `anthropic` one sketched in §1. §4's agent loop is the one
+> part that changed structurally, not just in small ways — see the note after §4.
 
 ---
 
@@ -164,6 +175,22 @@ def localize(inst: Instance, budget: Budget, graph) -> Prediction:
                       ranked_functions=ranked_functions, tokens=T, usd=U)
 ```
 
+**As built, this sketch was superseded.** The fixed one-pass pipeline above (keywords →
+search → traverse → rank) is replaced in `src/localizer/agent.py` by a **LangGraph
+ReAct loop**: the LLM is bound all three tools directly and decides step by step which
+to call and when it has enough to answer, up to `budget.max_hops` tool calls, after
+which a `force_answer` node cuts it off. This is closer to how LocAgent's own agent
+actually behaves (it doesn't run a fixed sequence either), and it's a strict superset —
+nothing stops the model from choosing to do keywords→search→traverse→rank if that's the
+best strategy for a given report. What's unchanged from this sketch: the three budget
+dials mean the same thing, reciprocal-rank voting across `max_samples` samples works the
+same way (see `README.md` Methodology, Stage 4), and `localize(inst, budget, graph) ->
+Prediction` is still the exact call `run.py` makes (it also now accepts an optional
+`progress_cb` for the web UI's live trace — CLI callers ignore it). See
+`README.md` "Fidelity to LocAgent" for the two tool-level upgrades
+(hierarchical search, direction-aware traversal) this loop gets "for free" by calling
+Farhan's tools.
+
 ---
 
 ## 5. Run scripts (the two experiments)
@@ -201,9 +228,21 @@ from src.quality.policy import choose_budget
 
 That single difference — fixed budget vs. quality-chosen budget — **is** the experiment.
 
+**As built**, the two scripts don't duplicate this loop — they each call one shared
+`run_experiment(budget_fn, out_name, args, cfg)` in `src/localizer/run.py`, passing only
+their own `budget_for(inst, cfg) -> (Budget, score)` closure. That guarantees the "differ
+only in scorer+policy" requirement by construction rather than by discipline — see
+`README.md`'s deviation log. `run_experiment` also now indexes each
+repo through Farhan's `load_or_build_graph` disk cache instead of calling `build_graph`
+fresh every time (see `02_FARHAN_graph_and_tools.md`).
+
 ---
 
 ## 6. Stubs so you're not blocked
+
+**No longer needed** — Farhan's and Fahim's real implementations have long since
+landed. Left below for history / for anyone bootstrapping a similar project from
+scratch.
 
 Until Farhan/3 land, drop these in to run end-to-end today:
 

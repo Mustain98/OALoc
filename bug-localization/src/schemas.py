@@ -36,3 +36,9 @@ class Prediction:
     quality_score: int = -1        # 0..4, -1 if not scored (baseline)
     tokens: int = 0
     usd: float = 0.0
+    # Provenance — defaulted to "" so old .jsonl rows (written before these fields
+    # existed) still deserialize via Prediction(**json.loads(line)).
+    run_id: str = ""                # shared by every instance written in one run
+    timestamp: str = ""             # ISO 8601 UTC, set when this instance finished
+    provider: str = ""              # "ollama" | "groq" | ...
+    model: str = ""

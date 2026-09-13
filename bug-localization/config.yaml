@@ -2,8 +2,11 @@
 # Nothing here is code — tune the experiment by editing this file.
 
 # --- LLM backend -------------------------------------------------------------
-# provider: ollama | fake | anthropic
+# provider: ollama | groq | fake | anthropic
 #   ollama    — free, runs locally, no API key. usd is genuinely 0.0.
+#   groq      — hosted, needs an API key. Set GROQ_API_KEYS (comma-separated) in
+#               the environment, or groq.api_keys below. When a key hits its
+#               rate/day limit, the app automatically rotates to the next one.
 #   fake      — deterministic canned responses; used by the test suite.
 #   anthropic — hosted, billed per token. Needs ANTHROPIC_API_KEY in .env.
 provider: "ollama"
@@ -17,6 +20,13 @@ ollama:
   # doing anything and the experiment measures nothing. Keep this explicit.
   num_ctx: 16384
   timeout: 600          # seconds; a local 7B on CPU/GPU can be slow on long prompts
+
+groq:
+  # Optional — prefer the GROQ_API_KEYS env var (comma-separated, in .env) so
+  # real keys don't end up committed to this tracked file. Any keys here are
+  # tried first, then any from GROQ_API_KEYS, in order; the app rotates to the
+  # next one on a 429.
+  api_keys: []
 
 # --- Dataset -----------------------------------------------------------------
 dataset: "princeton-nlp/SWE-bench_Lite"
@@ -36,3 +46,7 @@ baseline_budget: { max_candidates: 15, max_hops: 2, max_samples: 1 }
 paths:
   data: "./data"
   outputs: "./outputs"
+  # Persisted, build-once-per-commit CodeGraph cache (src/graph/cache.py). Keyed by
+  # the resolved commit SHA, so re-querying the same commit skips re-parsing and
+  # re-indexing entirely; a new commit naturally busts the cache.
+  graph_cache: "./data/.graph_cache"

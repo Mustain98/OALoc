@@ -1,8 +1,31 @@
 # Farhan — Code Graph Indexer & Navigation Tools
 
 > **You build the LocAgent backbone: turn a repository into a searchable graph, and expose
-> the three tools the localizer uses to explore it.** Read `00_PROJECT_GUIDE.md` first.
+> the three tools the localizer uses to explore it.** Read the root `README.md` first (Architecture section).
 > You do NOT depend on anyone — start immediately. Taj's agent imports your functions.
+>
+> **Status: done, and since extended to close two gaps with the LocAgent paper.** The
+> sketches below are the starting point that shipped; the real
+> `bug-localization/src/graph/indexer.py` and `tools.py` are more complete (real git
+> clone with retry, best-effort name resolution for invoke/inherit/import, per-entity
+> line slicing) and have grown two capabilities beyond this doc:
+>
+> 1. **`search_entity` is a 4-tier hierarchy**, not one flat BM25 index (paper §3.1):
+>    exact entity-ID match → exact entity-name match → BM25 over entity IDs → BM25 over
+>    entity content. Each hit now also carries a `"match"` field saying which tier found
+>    it. See `search_entity` in `tools.py`.
+> 2. **`traverse_graph` takes a `direction`** (`"out"` default / `"in"` / `"both"`),
+>    matching LocAgent's direction-aware TraverseGraph (paper Table 2, Figure 7). `"in"`
+>    walks the new `CodeGraph.in_edges()` method and labels reverse edges with a `-by`
+>    suffix (e.g. `invoke-by`) so a rendered tree can show "who calls this" as well as
+>    "what this calls."
+>
+> A third addition, `src/graph/cache.py`, builds on top of `build_graph` rather than
+> changing it: `load_or_build_graph(repo, commit, repo_dir, cache_dir, force=False)`
+> pickles the whole `CodeGraph` (BM25 indexes included) to disk keyed by the exact
+> resolved commit SHA, so a repo is indexed once and every later query against the same
+> commit is near-instant. `run.py` and the web UI both call this instead of calling
+> `build_graph` directly now.
 
 ---
 
@@ -14,7 +37,7 @@
 | `src/graph/tools.py`   | `search_entity`, `traverse_graph`, `retrieve_entity` |
 
 Your output is consumed only through the four function signatures in
-`00_PROJECT_GUIDE.md` §4. As long as those behave, your internals are yours.
+`README.md`'s Shared interfaces section. As long as those behave, your internals are yours.
 
 ---
 
@@ -195,3 +218,6 @@ def test_graph_finds_entity():
 - The three tools match the §4 signatures in the guide and pass `test_graph.py`.
 - `search_entity` returns something sensible for a keyword that appears in the repo.
 - You never read `gold_files` — your code doesn't even receive them.
+- (as-built, additionally) `search_entity`'s four tiers and `traverse_graph`'s three
+  directions each have dedicated tests in `test_graph.py`; `load_or_build_graph` is
+  covered indirectly by `run.py` reusing a cached graph across two script invocations.

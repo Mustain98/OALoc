@@ -35,9 +35,11 @@ class LLMError(RuntimeError):
 
 def configure(cfg: dict) -> None:
     """Point the module at a loaded config.yaml. Called once by the run scripts."""
-    global _CFG, _DEFAULT_PROVIDER
+    global _CFG, _DEFAULT_PROVIDER, _GROQ_KEYS, _GROQ_KEY_IDX
     _CFG = cfg or {}
     _DEFAULT_PROVIDER = _CFG.get("provider", _DEFAULT_PROVIDER)
+    _GROQ_KEYS = None   # re-derive from the new cfg/env next time a Groq key is needed
+    _GROQ_KEY_IDX = 0
 
 
 def set_provider(provider: str) -> None:
@@ -64,11 +66,13 @@ def call(model: str, system: str, user: str, max_tokens: int = 1024):
     provider = _DEFAULT_PROVIDER
     if provider == "ollama":
         return _call_ollama(model, system, user, max_tokens)
+    if provider == "groq":
+        return _call_groq(model, system, user, max_tokens)
     if provider == "fake":
         return _call_fake(model, system, user, max_tokens)
     if provider == "anthropic":
         return _call_anthropic(model, system, user, max_tokens)
-    raise LLMError(f"unknown provider {provider!r} (expected ollama | fake | anthropic)")
+    raise LLMError(f"unknown provider {provider!r} (expected ollama | groq | fake | anthropic)")
 
 
 # --------------------------------------------------------------------------- #
@@ -169,6 +173,86 @@ def _call_fake(model: str, system: str, user: str, max_tokens: int):
     # Token counts are approximated so cost arithmetic is still exercised offline.
     tin = max(1, (len(system) + len(user)) // 4)
     tout = max(1, len(text) // 4)
+    return text, tin + tout, usd_for(model, tin, tout)
+
+
+# --------------------------------------------------------------------------- #
+# Backend: Groq — hosted, needs an API key. Supports a LIST of keys so a run
+# doesn't die the moment one key hits its daily/rate limit: on a 429 it rotates
+# to the next configured key and retries, only giving up once all are exhausted.
+# --------------------------------------------------------------------------- #
+_GROQ_KEYS: list[str] | None = None
+_GROQ_KEY_IDX = 0
+
+
+def _load_groq_keys() -> list[str]:
+    """Merge config.yaml's groq.api_keys with the GROQ_API_KEYS env var
+    (comma-separated), config first so an operator can override via config.yaml,
+    de-duplicated. Also accepts a single legacy GROQ_API_KEY for convenience."""
+    keys = list((_CFG.get("groq", {}) or {}).get("api_keys", []) or [])
+    env_keys = [k.strip() for k in os.environ.get("GROQ_API_KEYS", "").split(",") if k.strip()]
+    for k in env_keys:
+        if k not in keys:
+            keys.append(k)
+    legacy = os.environ.get("GROQ_API_KEY", "").strip()
+    if legacy and legacy not in keys:
+        keys.append(legacy)
+    return keys
+
+
+def current_groq_key() -> str:
+    """The key to use for the next Groq call. Call groq_key_failed() to advance
+    past one that has hit its rate/day limit."""
+    global _GROQ_KEYS
+    if _GROQ_KEYS is None:
+        _GROQ_KEYS = _load_groq_keys()
+    if not _GROQ_KEYS:
+        raise LLMError(
+            "no Groq API key configured — set GROQ_API_KEYS (comma-separated) in "
+            "the environment, or groq.api_keys in config.yaml"
+        )
+    return _GROQ_KEYS[_GROQ_KEY_IDX % len(_GROQ_KEYS)]
+
+
+def groq_key_failed() -> bool:
+    """Advance to the next configured key. Returns False once every key has been
+    tried (the caller should give up and surface an error)."""
+    global _GROQ_KEY_IDX
+    _GROQ_KEY_IDX += 1
+    return _GROQ_KEY_IDX < len(_GROQ_KEYS or [])
+
+
+def make_chat_groq(model: str, **kwargs):
+    """The one place a ChatGroq client is constructed, so key selection/rotation
+    lives in a single spot instead of being duplicated at every call site."""
+    from langchain_groq import ChatGroq
+
+    os.environ["GROQ_API_KEY"] = current_groq_key()
+    return ChatGroq(model=model, **kwargs)
+
+
+def _call_groq(model: str, system: str, user: str, max_tokens: int):
+    import groq
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    while True:
+        llm_client = make_chat_groq(model, temperature=0.0)
+        try:
+            response = llm_client.invoke(
+                [SystemMessage(content=system), HumanMessage(content=user)])
+            break
+        except (groq.RateLimitError, groq.APIStatusError) as e:
+            is_rate_limit = isinstance(e, groq.RateLimitError) or getattr(
+                e, "status_code", None) == 429
+            if not is_rate_limit:
+                raise
+            if not groq_key_failed():
+                raise LLMError(
+                    f"all configured Groq API keys are rate/day-limited: {e}") from e
+    text = response.content
+    usage = getattr(response, "usage_metadata", {}) or {}
+    tin = usage.get("input_tokens", 0)
+    tout = usage.get("output_tokens", 0)
     return text, tin + tout, usd_for(model, tin, tout)
 
 

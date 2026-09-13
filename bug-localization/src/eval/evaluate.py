@@ -28,6 +28,11 @@ def evaluate(preds: list[Prediction], gold: list[Instance]) -> dict:
         if not g:
             continue
         rows.append({
+            "instance_id": p.instance_id,
+            "ranked_files": p.ranked_files,
+            "ranked_functions": p.ranked_functions,
+            "gold_files": g.gold_files,
+            "gold_functions": g.gold_functions,
             "acc@1": _acc_at_k(p.ranked_files, g.gold_files, 1),
             "acc@3": _acc_at_k(p.ranked_files, g.gold_files, 3),
             "acc@5": _acc_at_k(p.ranked_files, g.gold_files, 5),

@@ -3,7 +3,7 @@
 # FARHAN (02_FARHAN_graph_and_tools.md §3). The three tools the localizer calls.
 #
 #     search_entity(graph, keyword, detail) -> list[dict]   (each dict has an "id")
-#     traverse_graph(graph, seeds, hops, edge_types) -> str
+#     traverse_graph(graph, seeds, hops, edge_types, direction) -> str
 #     retrieve_entity(graph, entity_id) -> dict
 #
 # Everything returned is JSON-serializable: the agent puts traverse_graph's string
@@ -15,6 +15,12 @@ from rank_bm25 import BM25Okapi
 # How many entities search_entity returns per keyword before the agent's own
 # max_candidates budget trims further.
 _SEARCH_LIMIT = 20
+
+# LocAgent (paper §3.1) caps each entity's indexed content — full source for every
+# function/class in a large repo would make the content-BM25 corpus far bigger than
+# the id-BM25 one for no matching benefit; a keyword either shows up in the first
+# chunk of a body or it doesn't meaningfully identify that entity.
+_CONTENT_TOKEN_CAP = 500
 
 # Ceiling on traverse_graph, per hop. On a real repo, three hops of `invoke` edges
 # from 50 seeds reaches most of the codebase; without a cap the tool would spend
@@ -47,26 +53,50 @@ def _tokens(text: str) -> list[str]:
 
 
 def _index(graph):
-    """Build (and cache on the graph) the BM25 index over searchable entities.
+    """Build (and cache on the graph) the hierarchical entity index.
 
-    Cached because the agent calls search_entity once per keyword, up to 6 keywords
-    per sample and max_samples samples per instance. Rebuilding the index each time
-    would dominate the runtime on any repo bigger than the test fixture.
+    Mirrors LocAgent's four-tier "Sparse Hierarchical Entity Indexing" (paper §3.1),
+    tried top to bottom by search_entity:
+
+        1. entity ID index      — exact fully-qualified id match
+        2. entity name dict     — exact bare-name match (name -> [ids])
+        3. BM25 over entity IDs — fuzzy match against id + qualname + name
+        4. BM25 over content    — fuzzy match against each entity's own source, for
+                                   keywords (e.g. a global variable) that never appear
+                                   in any id/name
+
+    Cached on the graph because the agent calls search_entity once per keyword, up to
+    6 keywords per sample and max_samples samples per instance. Rebuilding any of
+    these each time would dominate the runtime on any repo bigger than the fixture.
     """
     cached = getattr(graph, "_search_index", None)
     if cached is not None:
         return cached
 
-    ids, docs = [], []
+    id_set: set[str] = set()
+    name_map: dict[str, list[str]] = {}
+    ids, id_docs, content_docs = [], [], []
+
     for nid, d in graph.g.nodes(data=True):
         if d.get("type") not in ("file", "class", "function"):
             continue
+        id_set.add(nid)
+        name_map.setdefault(d.get("name", ""), []).append(nid)
+
         ids.append(nid)
         # The id carries the directory and file name; qualname carries the class it
         # belongs to. Both are signal a bug report can match against.
-        docs.append(_tokens(f"{nid} {d.get('qualname', '')} {d.get('name', '')}"))
+        id_docs.append(_tokens(f"{nid} {d.get('qualname', '')} {d.get('name', '')}"))
+        # Slice the raw text before tokenizing (not after) so a huge file's cost is
+        # bounded up front rather than tokenizing it in full just to discard most of it.
+        content_docs.append(_tokens(graph.code_of(nid)[:4000])[:_CONTENT_TOKEN_CAP])
 
-    index = (ids, BM25Okapi(docs) if docs else None)
+    index = {
+        "id_set": id_set,
+        "name_map": name_map,
+        "bm25_ids": (ids, BM25Okapi(id_docs) if id_docs else None),
+        "bm25_content": (ids, BM25Okapi(content_docs) if content_docs else None),
+    }
     try:
         graph._search_index = index
     except AttributeError:
@@ -74,38 +104,71 @@ def _index(graph):
     return index
 
 
-def search_entity(graph, keyword: str, detail: str = "preview") -> list[dict]:
-    """Rank entities by BM25 relevance to `keyword`.
-
-    detail: 'id' -> id/type/path only | 'preview' -> + first 200 chars of source
-            | 'full' -> + the entity's complete source.
-    """
-    ids, bm25 = _index(graph)
-    query = _tokens(keyword)
-    if not ids or bm25 is None or not query:
+def _bm25_hits(graph, ids, bm25, query: list[str], match: str) -> list[dict]:
+    if bm25 is None or not query:
         return []
-
     scores = bm25.get_scores(query)
     ranked = sorted(zip(ids, scores), key=lambda x: -x[1])[:_SEARCH_LIMIT]
-
-    out: list[dict] = []
+    out = []
     for nid, sc in ranked:
         if sc <= 0:
             break          # scores are sorted; nothing below this point matches
         d = graph.g.nodes[nid]
-        item = {"id": nid, "type": d.get("type"), "path": d.get("path"),
-                "score": round(float(sc), 3)}
+        out.append({"id": nid, "type": d.get("type"), "path": d.get("path"),
+                    "score": round(float(sc), 3), "match": match})
+    return out
+
+
+def search_entity(graph, keyword: str, detail: str = "preview") -> list[dict]:
+    """Find entities matching `keyword`, trying exact tiers before falling back to
+    BM25 (LocAgent paper §3.1 — see `_index` for the full tier order).
+
+    detail: 'id' -> id/type/path only | 'preview' -> + first 200 chars of source
+            | 'full' -> + the entity's complete source.
+    """
+    idx = _index(graph)
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return []
+
+    hits: list[dict] = []
+    if keyword in idx["id_set"]:
+        d = graph.g.nodes[keyword]
+        hits = [{"id": keyword, "type": d.get("type"), "path": d.get("path"),
+                "score": 1.0, "match": "exact_id"}]
+    elif keyword in idx["name_map"]:
+        hits = []
+        for nid in idx["name_map"][keyword]:
+            d = graph.g.nodes[nid]
+            hits.append({"id": nid, "type": d.get("type"), "path": d.get("path"),
+                        "score": 1.0, "match": "exact_name"})
+    else:
+        query = _tokens(keyword)
+        ids, bm25 = idx["bm25_ids"]
+        hits = _bm25_hits(graph, ids, bm25, query, "bm25_id")
+        if not hits:
+            ids, bm25 = idx["bm25_content"]
+            hits = _bm25_hits(graph, ids, bm25, query, "bm25_content")
+
+    for item in hits:
+        nid = item["id"]
         if detail == "preview":
             item["preview"] = graph.code_of(nid)[:200]
         elif detail == "full":
             item["code"] = graph.code_of(nid)
-        out.append(item)
-    return out
+    return hits
 
 
 def traverse_graph(graph, seeds: list[str], hops: int = 2,
-                   edge_types=("contain", "invoke", "import", "inherit")) -> str:
-    """Walk out from `seeds` up to `hops` edges, rendered as an indented tree.
+                   edge_types=("contain", "invoke", "import", "inherit"),
+                   direction: str = "out") -> str:
+    """Walk from `seeds` up to `hops` edges, rendered as an indented tree.
+
+    direction: 'out' (default — what this entity uses/contains, unchanged behavior),
+               'in' (what points AT this entity — who calls it, who imports it),
+               'both'. Matches LocAgent's direction-aware TraverseGraph (paper Table 2);
+    reverse edges are labelled with a "-by" suffix (e.g. "invoke-by") to mirror the
+    paper's "contains-by"/"imports-by" trees (Figure 7).
 
     The output goes straight into the model's prompt, so it is text, not a data
     structure: one line per entity, indented by distance from its seed, annotated
@@ -113,6 +176,8 @@ def traverse_graph(graph, seeds: list[str], hops: int = 2,
     """
     hops = max(0, int(hops))
     wanted = set(edge_types or ())
+    want_out = direction in ("out", "both")
+    want_in = direction in ("in", "both")
     budget = _MAX_NODES_PER_HOP * max(1, hops)
 
     seen: set[str] = set()
@@ -135,10 +200,14 @@ def traverse_graph(graph, seeds: list[str], hops: int = 2,
         # Deterministic order, and `contain` first so a file's own members are listed
         # before the graph wanders off into call targets in other files.
         order = {"contain": 0, "inherit": 1, "invoke": 2, "import": 3}
-        edges = [(b, t) for _, b, t in graph.out_edges(nid) if t in wanted]
+        edges = []
+        if want_out:
+            edges += [(b, t, False) for _, b, t in graph.out_edges(nid) if t in wanted]
+        if want_in:
+            edges += [(a, t, True) for _, a, t in graph.in_edges(nid) if t in wanted]
         edges.sort(key=lambda e: (order.get(e[1], 9), e[0]))
-        for nbr, etype in edges:
-            walk(nbr, depth + 1, etype)
+        for nbr, etype, is_reverse in edges:
+            walk(nbr, depth + 1, f"{etype}-by" if is_reverse else etype)
 
     for s in seeds or ():
         walk(s, 0, None)
