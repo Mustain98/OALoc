@@ -1,7 +1,7 @@
 # src/config.py
 #
-# ROLE 3 owns this file (03_ROLE_data_and_evaluation.md §1). Written here on day 1
-# because Role 1 cannot run without it; the implementation follows that spec exactly.
+# FAHIM owns this file (03_FAHIM_data_and_evaluation.md §1). Written here on day 1
+# because Taj cannot run without it; the implementation follows that spec exactly.
 import os
 
 import yaml

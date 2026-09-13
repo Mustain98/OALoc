@@ -1,6 +1,6 @@
-# STUB — owned by ROLE 2 (02_ROLE_graph_and_tools.md).
+# STUB — owned by FARHAN (02_FARHAN_graph_and_tools.md).
 # Replace this file wholesale when their branch lands. Do not build on its internals;
-# Role 1 only depends on the signatures in 00_PROJECT_GUIDE.md §4.
+# Taj only depends on the signatures in 00_PROJECT_GUIDE.md §4.
 #
 # This placeholder indexes a local directory with `ast` so the pipeline runs today.
 # It does NOT clone anything — checkout_repo returns the bundled fixture repo.
@@ -14,7 +14,7 @@ _FIXTURE = os.path.join(
 
 
 class CodeGraph:
-    """Minimal stand-in for Role 2's networkx-backed graph."""
+    """Minimal stand-in for Farhan's networkx-backed graph."""
 
     def __init__(self):
         self.nodes: dict[str, dict] = {}

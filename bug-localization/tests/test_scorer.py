@@ -1,4 +1,4 @@
-"""Role 1 definition of done: a rich report scores high, a vague one scores low."""
+"""Taj definition of done: a rich report scores high, a vague one scores low."""
 from src.quality.scorer import (
     FEATURE_NAMES,
     score_quality,

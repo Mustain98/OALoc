@@ -1,6 +1,6 @@
 # src/localizer/agent.py
 #
-# ROLE 1 owns this loop; it calls ROLE 2's tools.
+# TAJ owns this loop; it calls FARHAN's tools.
 #
 # One pass = keywords -> search_entity -> traverse_graph -> rank.
 # Repeat max_samples times and merge by reciprocal-rank voting.
@@ -14,7 +14,7 @@
 import re
 from collections import Counter, defaultdict
 
-from src.graph import tools                      # ROLE 2
+from src.graph import tools                      # FARHAN
 from src.llm import LLMError, call
 from src.schemas import Budget, Instance, Prediction
 
@@ -68,7 +68,7 @@ def _parse_entities(text: str, limit: int) -> list[str]:
 def _entity_aliases(path: str, name: str) -> list[str]:
     """'path:Class.method' also yields 'path:method'.
 
-    Role 3 derives gold functions from diff hunk headers, which give a bare function
+    Fahim derives gold functions from diff hunk headers, which give a bare function
     name ('path/file.py:get'). Emitting both spellings lets a qualified prediction
     still match.
     """

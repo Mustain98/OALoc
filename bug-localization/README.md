@@ -13,17 +13,17 @@ See `../00_PROJECT_GUIDE.md` for the architecture and `../04_METHODOLOGY.md` for
 | Part | Owner | State |
 |---|---|---|
 | `src/schemas.py`, `src/config.py`, `config.yaml` | shared | done (schemas frozen) |
-| `src/llm.py` | Role 1 | done |
-| `src/quality/scorer.py`, `src/quality/policy.py` | Role 1 | done |
-| `src/localizer/agent.py`, `src/localizer/run.py` | Role 1 | done |
-| `scripts/run_baseline.py`, `scripts/run_adaptive.py` | Role 1 | done |
-| `scripts/score_distribution.py` | Role 1 | done |
-| `src/graph/indexer.py`, `src/graph/tools.py` | **Role 2** | **STUB** |
-| `src/data/loader.py`, `src/eval/evaluate.py` | **Role 3** | **STUB** |
+| `src/llm.py` | Taj | done |
+| `src/quality/scorer.py`, `src/quality/policy.py` | Taj | done |
+| `src/localizer/agent.py`, `src/localizer/run.py` | Taj | done |
+| `scripts/run_baseline.py`, `scripts/run_adaptive.py` | Taj | done |
+| `scripts/score_distribution.py` | Taj | done |
+| `src/graph/indexer.py`, `src/graph/tools.py` | **Farhan** | **STUB** |
+| `src/data/loader.py`, `src/eval/evaluate.py` | **Fahim** | **STUB** |
 
-Every stub carries a `# STUB — owned by ROLE n` header and implements the exact signatures
-from `00_PROJECT_GUIDE.md §4`. Replace them wholesale; nothing in Role 1 touches their
-internals.
+Every stub carries a `# STUB — owned by FARHAN` or `# STUB — owned by FAHIM` header and
+implements the exact signatures from `00_PROJECT_GUIDE.md §4`. Replace them wholesale; none
+of Taj's code touches their internals.
 
 ---
 
@@ -73,7 +73,7 @@ no model output was used, and the results are invalid until the cause is fixed.
 **1. The cost axis is tokens, not dollars.** We run a local model, so `usd` is genuinely
 `0.0`. The headline accuracy-vs-cost plot must use `avg_tokens` on the x-axis.
 `Prediction.tokens` already carries it, so **no schema change is needed** — but
-`03_ROLE_data_and_evaluation.md §4` currently plots `avg_usd`, so Role 3 must adjust.
+`03_FAHIM_data_and_evaluation.md §4` currently plots `avg_usd`, so Fahim must adjust.
 Tokens are the better axis anyway: provider-neutral and exactly measurable.
 
 **2. `num_ctx` must stay set in `config.yaml`.** Ollama defaults it to ~4096 and truncates
@@ -83,7 +83,7 @@ anything and the experiment measures nothing.
 
 ---
 
-## Where this deviates from `01_ROLE_quality_and_orchestration.md`
+## Where this deviates from `01_TAJ_quality_and_orchestration.md`
 
 The role doc's code sketches were followed except where they would have broken the result.
 Each change is commented at the site:
@@ -100,7 +100,7 @@ Each change is commented at the site:
 - **Feature 3 of the scorer tightened.** `\b[A-Z][a-zA-Z0-9]+\b` matches any capitalised
   word including "The" and "When", so the feature fired on nearly every report and carried no
   signal. Now requires a real identifier.
-- **The loop lives in `src/localizer/run.py`**, shared by both scripts. Role 1's DoD requires
+- **The loop lives in `src/localizer/run.py`**, shared by both scripts. Taj's DoD requires
   the two arms differ only in scorer+policy; sharing the driver makes that true by
   construction instead of by discipline. Verify with
   `diff scripts/run_baseline.py scripts/run_adaptive.py`.

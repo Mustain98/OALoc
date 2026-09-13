@@ -1,9 +1,9 @@
-# STUB — owned by ROLE 3 (03_ROLE_data_and_evaluation.md §3-4).
+# STUB — owned by FAHIM (03_FAHIM_data_and_evaluation.md §3-4).
 # Replace wholesale when their branch lands. Enough of evaluate() is implemented here
-# for Role 1 to see end-to-end numbers; the comparison table, the quality breakdown
-# and the plot are Role 3's.
+# for Taj to see end-to-end numbers; the comparison table, the quality breakdown
+# and the plot are Fahim's.
 #
-# NOTE FOR ROLE 3: we run a local model, so `usd` is genuinely 0.0 and the headline
+# NOTE FOR FAHIM: we run a local model, so `usd` is genuinely 0.0 and the headline
 # accuracy-vs-cost plot must use avg_tokens on the x-axis, not avg_usd.
 # Prediction.tokens already carries it — no schema change needed.
 import json

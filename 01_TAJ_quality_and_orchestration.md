@@ -1,9 +1,9 @@
-# Role 1 — Quality Scorer, Budget Policy & Orchestration  (YOU)
+# Taj — Quality Scorer, Budget Policy & Orchestration  (YOU)
 
 > **This is the novel core of the project — the part that makes it publishable.**
 > You own the report-quality scorer, the budget policy, the agent loop, and the two run
 > scripts that tie everyone's work together. Read `00_PROJECT_GUIDE.md` first.
-> You depend on Role 2's tools (`src/graph/tools.py`) and Role 3's loader/evaluator, so
+> You depend on Farhan's tools (`src/graph/tools.py`) and Fahim's loader/evaluator, so
 > stub them (see §6) until they land, then swap in the real ones.
 
 ---
@@ -117,7 +117,7 @@ def fixed_budget(cfg) -> Budget:
 
 ---
 
-## 4. `src/localizer/agent.py` — the loop (uses Role 2's tools)
+## 4. `src/localizer/agent.py` — the loop (uses Farhan's tools)
 
 Keep it simple and budget-bounded. One pass = extract keywords → search → traverse →
 retrieve → rank. Repeat `max_samples` times and merge by how often each entity appears.
@@ -127,7 +127,7 @@ import re, json
 from collections import Counter
 from src.schemas import Instance, Budget, Prediction
 from src.llm import call
-from src.graph import tools   # ROLE 2
+from src.graph import tools   # FARHAN
 
 def _keywords(problem_statement: str, model: str) -> list[str]:
     sys = "Extract up to 6 code-relevant keywords (class/function/file names, error terms). Reply as a comma-separated list."
@@ -172,8 +172,8 @@ def localize(inst: Instance, budget: Budget, graph) -> Prediction:
 # scripts/run_baseline.py   — fixed effort (control)
 import json, yaml
 from src.config import load_config
-from src.data.loader import load_dataset          # ROLE 3
-from src.graph.indexer import build_graph, checkout_repo  # ROLE 2
+from src.data.loader import load_dataset          # FAHIM
+from src.graph.indexer import build_graph, checkout_repo  # FARHAN
 from src.quality.policy import fixed_budget
 from src.localizer.agent import localize
 
@@ -205,7 +205,7 @@ That single difference — fixed budget vs. quality-chosen budget — **is** the
 
 ## 6. Stubs so you're not blocked
 
-Until Role 2/3 land, drop these in to run end-to-end today:
+Until Farhan/3 land, drop these in to run end-to-end today:
 
 ```python
 # temporary fake tools

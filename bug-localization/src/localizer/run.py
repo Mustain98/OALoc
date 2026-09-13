@@ -1,9 +1,9 @@
 # src/localizer/run.py
 #
-# ROLE 1. The shared experiment driver.
+# TAJ. The shared experiment driver.
 #
 # Both run scripts call run_experiment() with a different budget function and nothing
-# else. Role 1's definition of done requires that baseline and adaptive "differ only
+# else. Taj's definition of done requires that baseline and adaptive "differ only
 # in scorer+policy — verify by diff"; keeping the loop in one place makes that true by
 # construction, and removes the risk of the two loops quietly drifting apart, which
 # would invalidate the controlled comparison.
@@ -15,8 +15,8 @@ from collections import Counter
 
 from src import llm
 from src.config import load_config
-from src.data.loader import load_dataset                    # ROLE 3
-from src.graph.indexer import build_graph, checkout_repo    # ROLE 2
+from src.data.loader import load_dataset                    # FAHIM
+from src.graph.indexer import build_graph, checkout_repo    # FARHAN
 from src.localizer.agent import localize
 
 

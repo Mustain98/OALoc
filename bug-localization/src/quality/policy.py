@@ -1,6 +1,6 @@
 # src/quality/policy.py
 #
-# ROLE 1. Stage 2 of the method: score -> Budget.
+# TAJ. Stage 2 of the method: score -> Budget.
 #
 # This is the mechanism that converts the quality signal into actual compute, and it
 # is the genuinely new part of the project. The mapping lives in config.yaml, not in

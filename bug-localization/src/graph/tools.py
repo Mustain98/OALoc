@@ -1,8 +1,8 @@
-# STUB — owned by ROLE 2 (02_ROLE_graph_and_tools.md §3).
-# Replace wholesale when their branch lands. Role 1 depends only on these three
+# STUB — owned by FARHAN (02_FARHAN_graph_and_tools.md §3).
+# Replace wholesale when their branch lands. Taj depends only on these three
 # signatures from 00_PROJECT_GUIDE.md §4.
 #
-# Substring matching stands in for Role 2's BM25 ranking — enough to exercise the
+# Substring matching stands in for Farhan's BM25 ranking — enough to exercise the
 # agent loop end-to-end, not enough to draw conclusions from.
 
 

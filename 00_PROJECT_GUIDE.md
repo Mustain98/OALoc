@@ -25,25 +25,25 @@ same effort on every report; we condition effort on a measured report-quality si
 ```
                  ┌─────────────────────────────────────────────────────────┐
   bug report ──► │ (A) QUALITY SCORER  ──►  score 0..4                      │
-                 │ (B) BUDGET POLICY   ──►  budget {candidates, hops, samples}│  ← ROLE 1 (you)
+                 │ (B) BUDGET POLICY   ──►  budget {candidates, hops, samples}│  ← TAJ (you)
                  └───────────────┬─────────────────────────────────────────┘
                                  │  report + budget
                                  ▼
                  ┌─────────────────────────────────────────────────────────┐
                  │ (C) CODE GRAPH  (repo → nodes/edges, built once per repo) │
-                 │ (D) TOOLS: search_entity / traverse_graph / retrieve      │  ← ROLE 2
+                 │ (D) TOOLS: search_entity / traverse_graph / retrieve      │  ← FARHAN
                  │ (E) LOCALIZER AGENT loop  ──► ranked files & functions    │
                  └───────────────┬─────────────────────────────────────────┘
                                  │  prediction {ranked_files, ranked_functions, cost}
                                  ▼
                  ┌─────────────────────────────────────────────────────────┐
                  │ (F) DATASET loader (SWE-bench Lite)                       │
-                 │ (G) EVALUATOR: Acc@k, MRR, cost  ──► results tables/plots │  ← ROLE 3
+                 │ (G) EVALUATOR: Acc@k, MRR, cost  ──► results tables/plots │  ← FAHIM
                  └─────────────────────────────────────────────────────────┘
 ```
 
-Build order: Role 2 and Role 3 can start immediately (they don't depend on the novel
-part). Role 1 wires everything together. Everyone codes against the **interfaces in §4** so
+Build order: Farhan and Fahim can start immediately (they don't depend on the novel
+part). Taj wires everything together. Everyone codes against the **interfaces in §4** so
 work happens in parallel and only integrates at the end.
 
 ---
@@ -63,17 +63,17 @@ bug-localization/
 │   ├── schemas.py              # the shared dataclasses in §4  — AGREE FIRST, DO NOT EDIT ALONE
 │   ├── config.py               # loads config.yaml + .env
 │   ├── llm.py                  # thin wrapper around the model API (shared helper)
-│   ├── quality/                # ROLE 1
+│   ├── quality/                # TAJ
 │   │   ├── scorer.py
 │   │   └── policy.py
-│   ├── graph/                  # ROLE 2
+│   ├── graph/                  # FARHAN
 │   │   ├── indexer.py
 │   │   └── tools.py
-│   ├── localizer/              # ROLE 1 owns the loop; uses ROLE 2 tools
+│   ├── localizer/              # TAJ owns the loop; uses FARHAN tools
 │   │   └── agent.py
-│   ├── data/                   # ROLE 3
+│   ├── data/                   # FAHIM
 │   │   └── loader.py
-│   └── eval/                   # ROLE 3
+│   └── eval/                   # FAHIM
 │       └── evaluate.py
 ├── scripts/
 │   ├── run_baseline.py         # fixed effort (control)
@@ -129,20 +129,20 @@ class Prediction:
 **The two function signatures everyone builds toward:**
 
 ```python
-# ROLE 1
+# TAJ
 def score_quality(problem_statement: str) -> int: ...          # returns 0..4
 def choose_budget(score: int, cfg) -> Budget: ...
 
-# ROLE 2  (the localizer calls these; ROLE 1 owns the loop that calls them)
+# FARHAN  (the localizer calls these; TAJ owns the loop that calls them)
 def build_graph(repo_dir: str) -> "CodeGraph": ...
 def search_entity(graph, keyword: str, detail: str) -> list[dict]: ...
 def traverse_graph(graph, seeds: list[str], hops: int, edge_types: list[str]) -> str: ...
 def retrieve_entity(graph, entity_id: str) -> dict: ...
 
-# ROLE 1 (top-level; ties it together)
+# TAJ (top-level; ties it together)
 def localize(inst: Instance, budget: Budget, graph) -> Prediction: ...
 
-# ROLE 3
+# FAHIM
 def load_dataset(name: str, split: str, limit: int) -> list[Instance]: ...
 def evaluate(preds: list[Prediction], gold: list[Instance]) -> dict: ...  # Acc@k, MRR, cost
 ```
@@ -156,7 +156,7 @@ model: "claude-sonnet-4-6"        # default localizer model
 dataset: "princeton-nlp/SWE-bench_Lite"
 split: "test"
 limit: 30                          # start small; raise to 300 for the full run
-budgets:                           # ROLE 1's policy reads these
+budgets:                           # TAJ's policy reads these
   low:    { max_candidates: 50, max_hops: 3, max_samples: 3 }   # for low-quality reports
   medium: { max_candidates: 25, max_hops: 2, max_samples: 2 }
   high:   { max_candidates: 10, max_hops: 1, max_samples: 1 }   # for clear reports
@@ -194,7 +194,7 @@ pytest>=8
 
 ## 7. Ground rules (so parallel work doesn't collide)
 
-- **Branch per role:** `role1-quality`, `role2-graph`, `role3-eval`. PR into `main`.
+- **Branch per role:** `taj-quality`, `farhan-graph`, `fahim-eval`. PR into `main`.
 - **`schemas.py` is frozen** after day 1. Any change is a 3-person decision.
 - **`gold_files` / `gold_functions` are for evaluation only.** Never pass them into the
   scorer, tools, or localizer — that would be cheating and it invalidates every result.

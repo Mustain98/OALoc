@@ -1,8 +1,8 @@
-# Role 2 — Code Graph Indexer & Navigation Tools
+# Farhan — Code Graph Indexer & Navigation Tools
 
 > **You build the LocAgent backbone: turn a repository into a searchable graph, and expose
 > the three tools the localizer uses to explore it.** Read `00_PROJECT_GUIDE.md` first.
-> You do NOT depend on anyone — start immediately. Role 1's agent imports your functions.
+> You do NOT depend on anyone — start immediately. Taj's agent imports your functions.
 
 ---
 
@@ -39,7 +39,7 @@ start) into a directed graph. Use `networkx.MultiDiGraph`.
 - `inherit` — class→base class
 
 `invoke` and `import` are resolved best-effort by name; it's fine to miss some (log how
-many you resolve — Role 3 may report graph coverage).
+many you resolve — Fahim may report graph coverage).
 
 ---
 
@@ -95,7 +95,7 @@ def build_graph(repo_dir: str) -> CodeGraph:
 ```
 
 Keep the whole graph in memory — SWE-bench repos are large but a single-repo graph fits fine.
-Build the graph **once per instance** (Role 1 calls `build_graph` per instance; you may add a
+Build the graph **once per instance** (Taj calls `build_graph` per instance; you may add a
 cache keyed by `repo@commit` if it's slow).
 
 ---

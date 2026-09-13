@@ -1,6 +1,6 @@
 # Read this before you write any code
 
-Role 1 (quality scorer, budget policy, agent loop, run scripts) is **done and on `main`**.
+Taj (quality scorer, budget policy, agent loop, run scripts) is **done and on `main`**.
 Roles 2 and 3 are **stubbed** — your job is to replace the stubs.
 
 This file is the short version. `00_PROJECT_GUIDE.md` is the full spec; `04_METHODOLOGY.md`
@@ -15,8 +15,8 @@ is the method to defend in the viva.
 We run a **free local model through Ollama**, not a paid API. So `Prediction.usd` is
 genuinely `0.0` on every run.
 
-**Role 3:** the headline accuracy-vs-cost plot must use `avg_tokens` on the x-axis.
-`03_ROLE_data_and_evaluation.md §4` currently plots `avg_usd` — that will be a flat line at
+**Fahim:** the headline accuracy-vs-cost plot must use `avg_tokens` on the x-axis.
+`03_FAHIM_data_and_evaluation.md §4` currently plots `avg_usd` — that will be a flat line at
 zero. `Prediction.tokens` already carries what you need, so **no schema change is required**;
 just plot the other field.
 
@@ -32,28 +32,28 @@ raise it with all three of us first — do not edit it on your branch.
 
 ## 2. What is stubbed and waiting for you
 
-Every stub file starts with `# STUB — owned by ROLE n`. They implement the real signatures
-from `00_PROJECT_GUIDE.md §4`, so **replace them wholesale** — nothing in Role 1 touches
-their internals.
+Every stub file starts with `# STUB — owned by FARHAN` or `# STUB — owned by FAHIM`. They
+implement the real signatures from `00_PROJECT_GUIDE.md §4`, so **replace them wholesale** —
+none of Taj's code touches their internals.
 
 | File | Owner | What the stub currently does |
 |---|---|---|
-| `bug-localization/src/graph/indexer.py` | **Role 2** | Indexes a local fixture dir with `ast`. Does not clone anything. |
-| `bug-localization/src/graph/tools.py` | **Role 2** | Substring matching instead of BM25. |
-| `bug-localization/src/data/loader.py` | **Role 3** | Returns 3 hand-written instances, not SWE-bench. |
-| `bug-localization/src/eval/evaluate.py` | **Role 3** | `evaluate()` works; the comparison table, quality breakdown and plot are missing. |
+| `bug-localization/src/graph/indexer.py` | **Farhan** | Indexes a local fixture dir with `ast`. Does not clone anything. |
+| `bug-localization/src/graph/tools.py` | **Farhan** | Substring matching instead of BM25. |
+| `bug-localization/src/data/loader.py` | **Fahim** | Returns 3 hand-written instances, not SWE-bench. |
+| `bug-localization/src/eval/evaluate.py` | **Fahim** | `evaluate()` works; the comparison table, quality breakdown and plot are missing. |
 
-The four signatures Role 1 calls, which must keep working:
+The four signatures Taj calls, which must keep working:
 
 ```python
-# Role 2
+# Farhan
 def checkout_repo(repo: str, base_commit: str, data_dir: str) -> str: ...
 def build_graph(repo_dir: str) -> "CodeGraph": ...
 def search_entity(graph, keyword: str, detail: str) -> list[dict]: ...   # dicts need an "id" key
 def traverse_graph(graph, seeds: list[str], hops: int, edge_types: list[str]) -> str: ...
 def retrieve_entity(graph, entity_id: str) -> dict: ...
 
-# Role 3
+# Fahim
 def load_dataset(name: str, split: str, limit: int) -> list[Instance]: ...
 def evaluate(preds: list[Prediction], gold: list[Instance]) -> dict: ...
 ```
@@ -66,16 +66,16 @@ def evaluate(preds: list[Prediction], gold: list[Instance]) -> dict: ...
 |---|---|
 | `main` | Stable. Only merge things that pass `pytest`. |
 | `demo` | **Integration branch.** Open your PRs against this one; Mustain merges here. |
-| `taj` | Mustain's working branch (Role 1). |
+| `taj` | Taj's working branch. |
 
-Make your own branch off `demo` — `role2-graph` or `role3-eval`, per
+Make your own branch off `demo` — `farhan-graph` or `fahim-eval`, per
 `00_PROJECT_GUIDE.md §7` — and PR into `demo`.
 
 ```bash
 git fetch origin
-git checkout -b role2-graph origin/demo
+git checkout -b farhan-graph origin/demo
 # ... work ...
-git push -u origin role2-graph
+git push -u origin farhan-graph
 ```
 
 ---
@@ -112,7 +112,7 @@ diff bug-localization/scripts/run_baseline.py bug-localization/scripts/run_adapt
 
 ---
 
-## 5. Role 3: run this first, before anything else
+## 5. Fahim: run this first, before anything else
 
 ```bash
 python scripts/score_distribution.py
@@ -128,7 +128,7 @@ It needs your real loader to be meaningful, so it is the first thing worth runni
 
 ---
 
-## 6. Where Role 1 deviates from `01_ROLE_quality_and_orchestration.md`
+## 6. Where Taj deviates from `01_TAJ_quality_and_orchestration.md`
 
 The role doc's code sketches were followed except where they would have broken the result.
 Each is commented at the site, and the full list is in `bug-localization/README.md`. The

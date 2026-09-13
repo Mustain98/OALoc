@@ -1,6 +1,6 @@
 # src/quality/scorer.py
 #
-# ROLE 1. Stage 1 of the method (04_METHODOLOGY.md): bug report text -> 0..4.
+# TAJ. Stage 1 of the method (04_METHODOLOGY.md): bug report text -> 0..4.
 #
 # Deliberately rule-based, deterministic and free — no model call. The score is the
 # load-bearing part of the novelty, so it has to be objective and defensible. The four
@@ -25,7 +25,7 @@ _RE_CODE_CALL = re.compile(r"\b\w+\.\w+\(|\bdef \w+\(|\bimport \w+|>>> ")
 
 # 3. Names a class, method or function EXPLICITLY.
 #
-#    Deviation from 01_ROLE_quality_and_orchestration.md §2, which used
+#    Deviation from 01_TAJ_quality_and_orchestration.md §2, which used
 #    `\b[A-Z][a-zA-Z0-9]+\b` — that matches any capitalised word, including the first
 #    word of a sentence ("The", "When", "This"), so the feature fired on nearly every
 #    report and carried no signal. 04_METHODOLOGY.md names the scorer as *the* risk of

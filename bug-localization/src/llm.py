@@ -1,6 +1,6 @@
 # src/llm.py
 #
-# ROLE 1 owns this. Everyone calls the model through it, so cost is measured in
+# TAJ owns this. Everyone calls the model through it, so cost is measured in
 # exactly one place (00_PROJECT_GUIDE.md §7: "if cost isn't measured, the project
 # has no result").
 #

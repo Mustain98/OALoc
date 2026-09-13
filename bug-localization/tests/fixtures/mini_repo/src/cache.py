@@ -1,4 +1,4 @@
-"""Tiny fixture module used by the Role 2/3 stubs and the offline tests."""
+"""Tiny fixture module used by the Farhan/3 stubs and the offline tests."""
 
 
 class Cache:

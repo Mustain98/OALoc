@@ -1,4 +1,4 @@
-# STUB — owned by ROLE 3 (03_ROLE_data_and_evaluation.md §2).
+# STUB — owned by FAHIM (03_FAHIM_data_and_evaluation.md §2).
 # Replace wholesale when their branch lands; the real version loads SWE-bench Lite
 # and derives gold locations from the fixing patch.
 #

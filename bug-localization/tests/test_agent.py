@@ -55,7 +55,7 @@ def test_parses_messy_model_output():
 
 
 def test_qualified_names_also_emit_bare_form():
-    """Role 3's gold functions come from diff hunk headers, i.e. bare names."""
+    """Fahim's gold functions come from diff hunk headers, i.e. bare names."""
     ents = _parse_entities("src/cache.py:Cache.get", limit=20)
     assert "src/cache.py:Cache.get" in ents
     assert "src/cache.py:get" in ents
