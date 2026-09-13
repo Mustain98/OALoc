@@ -1,10 +1,17 @@
 """Agent loop, exercised entirely offline via the `fake` LLM backend."""
 import pytest
 
+import os
+
 from src import llm
-from src.graph.indexer import build_graph, checkout_repo
+from src.graph.indexer import build_graph
 from src.localizer.agent import _parse_entities, _truncate_tree, localize
 from src.schemas import Budget, Instance
+
+# Point at the bundled fixture directly. checkout_repo now performs a real git clone,
+# so calling it here would try to reach github.com/stub/mini.
+MINI_REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "fixtures", "mini_repo")
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +24,7 @@ def fake_backend():
 
 @pytest.fixture
 def graph():
-    return build_graph(checkout_repo("stub/mini", "0000000", "./data"))
+    return build_graph(MINI_REPO)
 
 
 INST = Instance(

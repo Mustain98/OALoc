@@ -18,10 +18,10 @@ See `../00_PROJECT_GUIDE.md` for the architecture and `../04_METHODOLOGY.md` for
 | `src/localizer/agent.py`, `src/localizer/run.py` | Taj | done |
 | `scripts/run_baseline.py`, `scripts/run_adaptive.py` | Taj | done |
 | `scripts/score_distribution.py` | Taj | done |
-| `src/graph/indexer.py`, `src/graph/tools.py` | **Farhan** | **STUB** |
+| `src/graph/indexer.py`, `src/graph/tools.py` | Farhan | done |
 | `src/data/loader.py`, `src/eval/evaluate.py` | **Fahim** | **STUB** |
 
-Every stub carries a `# STUB — owned by FARHAN` or `# STUB — owned by FAHIM` header and
+Every remaining stub carries a `# STUB — owned by FAHIM` header and
 implements the exact signatures from `00_PROJECT_GUIDE.md §4`. Replace them wholesale; none
 of Taj's code touches their internals.
 
